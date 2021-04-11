@@ -1,3 +1,5 @@
+// Ryan Bell - Genity Problem Statement
+
 // Please write an algorithm in Golang or Rust,
 // utilizing concurrency, that sorts the contents of,
 // /n delimited, txt files into nested alphanumeric files
@@ -21,6 +23,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -28,46 +31,43 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
-// this struct will be used for concurrent communication
-type Result struct {
-	fileName string
-	sorted   bool
-	workerID int
-}
+var wg sync.WaitGroup
+var thresholdSize int = 1000
 
-// prints the slice "words" of words
-func printWords(words []string) {
-	n := len(words)
+// prints the input slice
+func printSlice(contents []string) {
+	n := len(contents)
 
 	for i := 0; i < n; i++ {
-		fmt.Println(words[i])
+		fmt.Println(contents[i])
 	}
 }
 
-// returns true if the slice "words" is sorted; else returns false
+// check if the input slice is sorted
 func isSliceSorted(words []string) bool {
 	return sort.SliceIsSorted(words, func(p, q int) bool {
 		return words[p] < words[q]
 	})
 }
 
-// returns true if the file "fileName" is sorted; else returns false
+// checks if the input file is sorted
 func isFileSorted(fileName string) bool {
-	return isSliceSorted(scanWordsToSlice(fileName))
+	return isSliceSorted(scanContentsToSlice(fileName))
 }
 
-// randomly shuffles the elements of "words"
-func Shuffle(words []string) {
+// randomly shuffles the elements of this slice
+func Shuffle(contents []string) {
 
-	// set the seed for pseudorandomness
 	rand.Seed(time.Now().UnixNano())
 
 	// this uses an anynomous "swap" function
-	rand.Shuffle(len(words), func(i, j int) {
-		words[i], words[j] = words[j], words[i]
+	rand.Shuffle(len(contents), func(i, j int) {
+		contents[i], contents[j] = contents[j], contents[i]
 	})
 }
 
@@ -80,222 +80,260 @@ func RNG(min, max int) int {
 	return (rand.Intn(max-min) + min)
 }
 
-// returns a slice containing the words from the file "fileName"
-func scanWordsToSlice(fileName string) []string {
+// returns a slice containing contents of this file
+func scanContentsToSlice(fileName string) []string {
 
-	// this slice will contain all the words from a file
-	var words []string
+	var contents []string
 
-	// open the file
+	// open the file; close it after use
 	f, err := os.Open(fileName)
-
-	// make sure the file opened correctly
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// close the file when we're done with it
 	defer f.Close()
 
-	// create the scanner to scan the file
+	// create the scanner and scan all words into slice
 	scanner := bufio.NewScanner(f)
-
-	// scan all words into a slice
 	for i := 0; scanner.Scan(); i++ {
-		words = append(words, scanner.Text())
+		contents = append(contents, scanner.Text())
 	}
-
-	// make sure the file was scanned correctly
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 
-	// return the slice of words
-	return words
+	return contents
 }
 
-// overwrites the contents of fileName with the words in this slice
+// appends the contents of fileName with the contents in this slice
 // if fileName doesn't exist yet, this function will create it
-func writeWordsToFile(words []string, fileName string) {
-	// truncate / create the txt file
-	f, err := os.Create(fileName)
+func appendContentsToFile(contents []string, fileName string) {
 
-	// make sure the file was truncated / created correctly
+	// open the file; if it doesn't exist, then create it
+	f, err := os.OpenFile(fileName,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// close the file when we're done with it
 	defer f.Close()
 
-	// write each word to the new file, delimited by "\n"
-	for _, word := range words {
-
-		// write word to file, then a line break
-		_, err := f.WriteString(word + "\n")
-
-		// make sure the word was written to the file correctly
-		if err != nil {
+	// write each content to the new file, delimited by "\n"
+	for _, content := range contents {
+		if _, err := f.WriteString(content + "\n"); err != nil {
 			log.Fatal(err)
 		}
 	}
 }
 
-// creates a new text file containing the same words as fileName,
-// named newFileName, but the words are sorted
-func createFileWithSortedWords(newFileName, fileName string) {
+// overwrites the contents of fileName with the contents in this slice
+// if fileName doesn't exist yet, this function will create it
+func overwriteContentsToFile(contents []string, fileName string) {
 
-	// make a slice with the words from this file
-	words := scanWordsToSlice(fileName)
+	// truncates or creates the file; close file when done
+	f, err := os.Create(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
 
-	// sort the words
-	sort.Strings(words)
+	// write each content to the new file, delimited by "\n"
+	for _, content := range contents {
+		if _, err := f.WriteString(content + "\n"); err != nil {
+			log.Fatal(err)
+		}
+	}
 
-	// create and populate this new txt file
-	writeWordsToFile(words, newFileName)
 }
 
-// creates a new text file containing the same words as fileName,
-// named newFileName, but the words are randomly shuffled
-func createFileWithShuffledWords(newFileName, fileName string) {
+// creates a new text file containing the same contents as fileName,
+// named newFileName, but the contents are sorted
+func createFileWithSortedContents(newFileName, fileName string) {
 
-	// make a slice with the words from this file
-	words := scanWordsToSlice(fileName)
+	contents := scanContentsToSlice(fileName)
 
-	// shuffle the words
-	Shuffle(words)
+	sort.Strings(contents)
 
-	// create and populate this new txt file
-	writeWordsToFile(words, newFileName)
+	overwriteContentsToFile(contents, newFileName)
+}
+func sortContentsInFile(fileName string) {
+	createFileWithSortedContents(fileName, fileName)
 }
 
-// sorts the words in a txt file, delimited by "\n"
-func sortWordsInFile(fileName string) {
+// creates a new text file containing the same contents as fileName,
+// named newFileName, but the contents are randomly shuffled
+func createFileWithShuffledContents(newFileName, fileName string) {
 
-	// make a slice with the words from this file
-	words := scanWordsToSlice(fileName)
+	contents := scanContentsToSlice(fileName)
 
-	// sort the words
-	sort.Strings(words)
+	Shuffle(contents)
 
-	// overwrite the file with sorted words
-	writeWordsToFile(words, fileName)
+	overwriteContentsToFile(contents, newFileName)
+}
+func shuffleContentsInFile(fileName string) {
+	createFileWithShuffledContents(fileName, fileName)
 }
 
-// shuffles the words in a txt file, delimited by "\n"
-func shuffleWordsInFile(fileName string) {
+// creates k new text files in directory, each containing a
+// selection of contents from the txt file fileName. there will
+// be a random number of contents, and in a random order
+func createNewFiles(k int, directory, fileName string) {
 
-	// make a slice with the words from this file
-	words := scanWordsToSlice(fileName)
-
-	// shuffle the words
-	Shuffle(words)
-
-	// overwrite the file with shuffled words
-	writeWordsToFile(words, fileName)
-}
-
-// creates k new txt files in a folder, each containing a random
-// selection of words from the txt file fileName. there will be
-// a random number of words, and in a random order
-func createNewFiles(k int, fileName string) {
-
-	// make a slice with the words from this file
-	words := scanWordsToSlice(fileName)
-	N := len(words)
+	contents := scanContentsToSlice(fileName)
+	N := len(contents)
 
 	for i := 1; i <= k; i++ {
-
-		// n random words; n is in [0,N]
 		n := RNG(0, N+1)
-
-		// randomize the slice
-		Shuffle(words)
-
-		// create this new file
-		writeWordsToFile(words[0:n], "wordfiles/"+
+		Shuffle(contents)
+		overwriteContentsToFile(contents[0:n], directory+"/"+
 			strconv.Itoa(i)+fileName)
 	}
 }
 
 // returns a slice of strings containing the names of all
-// of the .txt files at the specified directory
+// of the text files at the specified directory
 func fetchTextFileNames(directory string) []string {
 
-	// a slice containing all the desired filenames
 	fileNames, err := filepath.Glob(directory + "*.txt")
-
-	// make sure we aquired the slice correctly
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// return the slice
 	return fileNames
 }
 
-// the concurrent worker function
-func worker(jobs <-chan string, results chan<- Result, ID int) {
+// creates a map that splits up the contents slice into new slices
+// of strings which are organized by their first depth characters
+func sortContentsIntoMap(contents []string, depth int) map[string][]string {
 
-	// each worker uses this for loop when there is a job
-	// available to do, assuming they aren't already
-	// working on a different job
-	for fileName := range jobs {
-		// here the worker sort the words
-		sortWordsInFile(fileName)
+	characters := make(map[string][]string)
 
-		// communicates the fileName back, and confirms
-		// if the file was indeed sorted correctly
-		var result Result
-		result.fileName = fileName
-		result.sorted = isFileSorted(fileName)
-		result.workerID = ID
+	for _, content := range contents {
+		s := content[0:depth]
 
-		// send message
-		results <- result
+		// have we seen this initial string before?
+		// if no, put it in the map. in either case,
+		// add the content in the appropriate slice
+		if _, ok := characters[s]; ok {
+			characters[s] = append(characters[s], content)
+		} else {
+			characters[s] = make([]string, 0)
+			characters[s] = append(characters[s], content)
+		}
 	}
+
+	return characters
+}
+
+// writes a slice of strings to a file (sorted), or if the slice is
+// too long, creates a new directory and calls itself recursively
+func contentSorterRec(contents []string, directory string, depth int) {
+
+	if contents == nil {
+		log.Fatal(errors.New("Nothing to write into file!"))
+	}
+
+	// this will determine the name of the new file or folder
+	firstContent := contents[0]
+	newName := directory + firstContent[0:depth]
+
+	// if few enough contents, sort them and put them in a new file
+	// otherwise, split the slice up and try again recursively
+	if len(contents) <= thresholdSize {
+		sort.Strings(contents)
+		overwriteContentsToFile(contents, newName+".txt")
+	} else {
+		os.Mkdir(newName, os.ModePerm)
+		characters := sortContentsIntoMap(contents, depth+1)
+		for _, newContents := range characters {
+			contentSorterRec(newContents, newName+"/", depth+1)
+		}
+	}
+}
+
+// this is the concurrent worker function,
+// each of which sorts contents recursively
+func worker(jobs <-chan []string, directory string) {
+
+	for contents := range jobs {
+		contentSorterRec(contents, directory+"/", 1)
+	}
+
+	wg.Done()
+}
+
+// this function reads all contents from all files in inputDirectory
+// into memory at once. this trades space efficiency for speed
+// then, it (concurrently) writes the contents from those files
+// into outputDirectory, sorted in the desired fashion
+func contentSorter(outputDirectory, inputDirectory string) {
+
+	// we begin sorting all contents by their first character
+	firstCharacter := make(map[string][]string)
+
+	// open all files sequentially
+	for _, fileName := range fetchTextFileNames(inputDirectory + "/") {
+		f, err := os.Open(fileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// create the scanner and scan the file
+		scanner := bufio.NewScanner(f)
+		for i := 0; scanner.Scan(); i++ {
+			content := scanner.Text()
+			if strings.Compare(content, "") == 0 {
+				continue
+			}
+			c := string(content[0])
+
+			// have we seen this character before?
+			// if no, put it in the map. in either case,
+			// add the content in the appropriate slice
+			if _, ok := firstCharacter[c]; ok {
+				firstCharacter[c] = append(firstCharacter[c], content)
+			} else {
+				firstCharacter[c] = make([]string, 0)
+				firstCharacter[c] = append(firstCharacter[c], content)
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			log.Fatal(err)
+		}
+		f.Close()
+	}
+
+	// this is the concurrency block.
+	// we have a buffered channel of contents to sort,
+	// and "numWorkers" workers ready to do so concurrently.
+	// the waitgroup waits until all workers are done, and
+	// all workers will be done after there are no more jobs.
+	jobs := make(chan []string, len(firstCharacter))
+	numWorkers := 8
+	wg.Add(numWorkers)
+	for i := 1; i <= numWorkers; i++ {
+		go worker(jobs, outputDirectory)
+	}
+	for _, contents := range firstCharacter {
+		jobs <- contents
+	}
+	close(jobs)
 }
 
 func main() {
 
-	// number of files to create and sort
-	N := 1000
+	// delete and recreate the new input and output files
+	// at the specified input and output directories
 
-	// create the files; unsorted and random
-	createNewFiles(N, "words.txt")
+	inputDirectory := "namefiles"
+	outputDirectory := "sortednames"
+	numInputFiles := 100
+	defer wg.Wait()
 
-	// a slice of strings of all names of txt files in this directory
-	fileNames := fetchTextFileNames("/home/danmarino900/go_workspace/wordfiles/")
+	os.RemoveAll(inputDirectory)
+	os.Mkdir(inputDirectory, os.ModePerm)
+	createNewFiles(numInputFiles, inputDirectory, "names.txt")
 
-	// the channels over which our workers will recieve their jobs,
-	// and communicate their results (all done concurrently)
-	jobs := make(chan string, N)
-	results := make(chan Result, N)
-
-	// workers ready!
-	for i := 1; i <= 9; i++ {
-		go worker(jobs, results, i)
-	}
-
-	// put all the jobs in the job channel for the workers
-	for _, fileName := range fileNames {
-		// send message
-		jobs <- fileName
-	}
-	// the sender closes this channel; no more jobs to send
-	close(jobs)
-
-	// collect the results from each job as the workers finish them
-	for i := 0; i < N; i++ {
-		// receive message
-		result := <-results
-
-		// print our findings!
-		if result.sorted {
-			fmt.Printf("Worker %v: Is %-54s sorted? Yes it is! Great job!\n", result.workerID, result.fileName)
-		} else {
-			fmt.Printf("Oh no! Worker %v: %-54s is not sorted! Something went wrong =(\n", result.workerID, result.fileName)
-			os.Exit(result.workerID)
-		}
-	}
+	os.RemoveAll(outputDirectory)
+	os.Mkdir(outputDirectory, os.ModePerm)
+	contentSorter(outputDirectory, inputDirectory)
 }
