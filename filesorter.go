@@ -8,17 +8,6 @@
 // character into subfiles. Internally sort all files alphanumerically.
 // Finally, determine if an input file has already been sorted.
 
-// Questions:
-// (1) does "/n delimited" mean "files delimited by \n" (typo? as in
-// new line?) or "n files that are delimited"?
-// If the latter, delimited by what?
-// (2) Are there any constraints on the txt files? I.e., maximum
-// # of characters or words, the type of delimiter,
-// which kinds of characters, how many files, etc.
-// (3) Clarify "sort by the subsequent character into subfiles"?
-// I'm unclear on how you want me to "nest" the files
-// (4) Possible example output / input?
-
 package main
 
 import (
